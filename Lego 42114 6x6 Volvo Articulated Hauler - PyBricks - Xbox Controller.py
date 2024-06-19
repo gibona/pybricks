@@ -36,9 +36,11 @@ class Gearbox:
         False: [Color.ORANGE, Color(h=15, s=100, v=100), Color(h=5, s=100, v=100), Color.GREEN],
     }
 
-    def __init__(self, hub: TechnicHub, drive: Motor):
+
+    def __init__(self, hub: TechnicHub, drive: Motor, xboxController: XboxController):
         # assign external objects to properties of the class
         self.hub = hub
+        self.xboxController = xboxController
         self.drive = drive
         # initialize control variables
         self.speed_timer = 0
@@ -64,10 +66,13 @@ class Gearbox:
         # adjust settings of possible motor positions
         self.pos_angle = [p + base_angle for p in [90, 0, -90, -180]]
         self.pos = 0
+        self.xboxController.rumble(100, 1000, 3, 300)
 
     def set_position(self, pos):
         # limit positions to range 0,1,2,3
         pos = min(3, max(pos, 0))
+        self.xboxController.rumble(100, 100, pos + 1, 300)
+
         # apply new position, if it is different from the current one
         if self.pos != pos:
             # stop drive to allow smooth gear change
@@ -102,6 +107,7 @@ class Gearbox:
     def set_auto(self, auto):
         # set AUTO/MANUAL mode and update control light
         self.auto = auto
+        self.xboxController.rumble(100, 1000, 1, 300)
 
     def update_auto_gear(self):
         # in AUTO mode changes gear if speed is stable below/above LO_SPEED/HI_SPEED threshold
@@ -186,11 +192,11 @@ if __name__ == "__main__":
     steer.control.limits(speed=STEER_SPEED)
     steer.control.pid(kp=kp * STEER_HARDNESS, ki=ki * STEER_HARDNESS)
 
-    # initialize gearbox
-    gearbox = Gearbox(hub, drive)
-
     # initialize remote keys
     key = Key()
+
+    # initialize gearbox
+    gearbox = Gearbox(hub, drive, controller)
 
     # Calibration completed, start the FUN!
     hub.light.on(Color.GREEN)
@@ -199,22 +205,41 @@ if __name__ == "__main__":
     while True:
         key.update(controller)
 
-        # gearbox control
-        if key.released("A"):
-            # manual - change to lower gear; auto - switch to driving
-            new_pos = gearbox.last_auto_pos if gearbox.auto else gearbox.pos - 1
-            gearbox.set_position(new_pos)
-        elif key.released("X"):
-            # manual - change to higher gear/dumper; auto - switch to dumper
-            new_pos = 3 if gearbox.auto else gearbox.pos + 1
-            gearbox.set_position(new_pos)
-        elif key.released("Y"):
-            # switch gearbox mode to the other one
-            gearbox.set_auto(not gearbox.auto)
-
         # drive control
         acceleration, brake = controller.triggers()
-        drive_power = (acceleration - brake)
+        drive_power = (brake - acceleration )
+
+        # gearbox control
+        if key.released(Button.A):
+            if gearbox.auto:
+                controller.rumble(100, 3000)
+            else:
+                # manual - change to lower gear; auto - switch to driving
+                new_pos = gearbox.pos - 1
+                new_pos = min(2, max(new_pos, 0)) # limit to drive gears
+                gearbox.set_position(new_pos)   
+        elif key.released(Button.X):
+            if gearbox.auto:
+                controller.rumble(100, 3000)
+            else:
+                # manual - change to higher gear/dumper; auto - switch to dumper
+                new_pos = gearbox.pos + 1
+                new_pos = min(2, max(new_pos, 0)) # limit to drive gears
+                gearbox.set_position(new_pos)
+            
+        elif key.released(Button.Y):
+            # switch gearbox mode to the other one
+            gearbox.set_auto(not gearbox.auto)
+        elif key.pressed(Button.RB):
+            drive_power = 100
+            gearbox.set_position(3)
+        elif key.pressed(Button.LB):
+            drive_power = -100
+            gearbox.set_position(3)
+        elif key.released(Button.RB):
+            gearbox.set_position(gearbox.last_auto_pos)
+        elif key.released(Button.LB):
+            gearbox.set_position(gearbox.last_auto_pos)
 
         if drive_power != 0:
             # change gear automatically, if gearbox is in AUTO mode
