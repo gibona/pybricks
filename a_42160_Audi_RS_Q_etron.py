@@ -67,13 +67,15 @@ while True:
 
     # Turn off using green button:
     if Button.CENTER in buttons:
-        if !centerPressed:
+        if not centerPressed:
             centerPressed = True
             lightOn = (not lightOn)
             if lightOn:
                 light.on(100)
             else:
                 light.off()
+        else:
+            pass
     else:
         centerPressed = False 
 
